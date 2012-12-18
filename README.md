@@ -26,4 +26,6 @@ ruby bin/dbgp.rb -b breaks.data 或者  java -jar dbgp..jar -b breaks.data
 
 可单独执行ruby bin/dbgp.rb运行,也可以加载gem，从而在自己的其他脚本中运行。
 
-此工具是百度听风者测试平台的子部分。
+此工具是百度听风者测试平台的子部分。记录路径和数据是为了后续的建模分析使用。后续再开源自动生成思维导图和其他图形化的支持
+
+
