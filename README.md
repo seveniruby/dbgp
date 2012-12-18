@@ -16,10 +16,12 @@ xdebug.remote_port=8072 <br>
 
 运行模式支持trace与run模式。
 trace模式记录所有的运行数据。
+ruby bin/dbgp.rb 或者 java -jar dbgp.jar  （dbgp.jar是把ruby脚本编译成了java包。）
+
 run模式根据设定好的断点数据，只记录断点数据的内容。用于提高速度。
+ruby bin/dbgp.rb -b breaks.data 或者  java -jar dbgp..jar -b breaks.data
 
 可单独执行ruby bin/dbgp.rb运行
 也可以加载gem，从而在自己的其他脚本中运行。
-也可以使用纯java的实现
 
 此工具是百度听风者测试平台的子部分。
