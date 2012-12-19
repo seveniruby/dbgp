@@ -1,3 +1,3 @@
-module Dbgp
-  VERSION = "0.0.1"
+module DBGP
+  VERSION = "0.0.2"
 end

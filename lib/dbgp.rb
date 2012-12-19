@@ -1,10 +1,10 @@
 #encoding: utf-8
+require 'rubygems'
+#require "bundler/setup"
 require 'gserver'
 require 'xmlsimple'
 require 'base64'
 require 'pp'
-require 'rgl/adjacency'
-require 'rgl/dot'
 require 'restclient'
 require 'json'
 require 'yaml'
@@ -12,8 +12,6 @@ require 'optparse'
 
 module DBGP
 	class GDBServer < GServer
-		@session
-
 		def initialize(session,port, *args)
 			@session=session
 			port=8072 if !port
@@ -23,18 +21,7 @@ module DBGP
 
 		def serve(io)
 			begin
-				@session.io_set(io)
-				if @session.has_response?
-					res=@session.print_response
-					p res
-					res=@session.file_get res["fileuri"].gsub(/.*\//,'')	
-					p res
-					file=Base64.decode64 res["property"][0]["content"]
-					p file
-					@session.get_file file			
-				end
-
-				@session.trace
+				@session.start(io)
 			rescue Exception=>e
 				p e.message
 				p e.backtrace
@@ -45,20 +32,38 @@ module DBGP
 	end
 
 	class GDBSession
-		@session_id
-		def initialize(mode, breakpoint_file,server)
-			@mode=mode
-			@mode='trace' if mode!='run'
+		def initialize(breakpoint_file,server)
+			if breakpoint_file
+				@mode='run'
+			else
+				@mode='trace'
+			end
 			@breakpoint_file = breakpoint_file
 			@server=server
 			@threads=[]
 			#存放一次调试的所有记录
-			@res_list||=[]
+			@res_list||={}
+			@testcase_name||="all"
+			@res_list[@testcase_name]=[]
 			@content=[]
+			@breakpoints={}
+
+			
 		end
 
-		def io_set(io)
-			@io=io
+		def breakpoints_set
+			if @breakpoint_file
+				if File.exist? @breakpoint_file
+					IO.readlines(@breakpoint_file).each do |line|
+						data=line.split
+						next if !data[0]
+						run_cmd "breakpoint_set -i 1 -t line -f #{data[0]} -n #{data[1]}"
+						@breakpoints["#{data[0]}:#{data[1]}"]=data[2]
+					end
+				end
+			else
+				p 'no breakpoints set'
+			end
 		end
 
 		def send_cmd(cmd,arg)
@@ -87,10 +92,6 @@ module DBGP
 			else
 				return false
 			end
-		end
-
-		def get_file(file)
-			@content=file
 		end
 
 		def get_var
@@ -153,8 +154,9 @@ module DBGP
 		def data_get
 			data={}
 			res=stack_get
-			data[:file]=res["stack"][0]["filename"]
-			data[:line]=res["stack"][0]["lineno"]
+			data[:file]=res["stack"][0]["filename"].split('/')[-1]
+			data[:line]=res["stack"][0]["lineno"].to_i
+			data[:name]=@breakpoints["#{data[:file]}:#{data[:line]}"]
 			data[:stack]=res["stack"].reverse.map{|x| "#{x['where']}:#{x['lineno']}"}.join('->')
 
 
@@ -179,23 +181,16 @@ module DBGP
 		end
 
 
-		def run()		
-			if @breakpoint_file
-				if File.exist? @breakpoint_file
-					IO.readlines(@breakpoint_file).each do |line|
-						p run_cmd line
-					end
-				end
-			else
-				p 'no breakpoints set'
-			end
+		def run()
+
 			while true do
 				res=run_cmd 'run -i 1'
 				if !res || res['status']=='stopping'
 					break;
 				end
 				data=data_get
-				@res_list<<data 
+				@res_list[@testcase_name]<<data
+			       p @testcase_name	
 			end
 			nodes_send
 		end
@@ -207,14 +202,46 @@ module DBGP
 					break;
 				end
 				data=data_get
-				@res_list<<data 
+				@res_list[@testcase_name]<<data 
 			end
 			nodes_send
 		end
 
+		def start(io)
+			@io=io
+			if has_response?
+				res=print_response
+				res=file_get res["fileuri"].gsub(/.*\//,'')	
+				@content=Base64.decode64 res["property"][0]["content"]
+			end
+			breakpoints_set
+			if @mode=='run'
+				run
+			else
+				trace
+			end
+		end
+
+		def data
+			@res_list
+		end
+
+		def tc_set(name)
+			@testcase_name=name
+			@res_list[@testcase_name]||=[]
+
+		end
+		def tc_clear
+			@res_list[@testcase_name]=[]
+		end
+		def tc_get(name="all")
+			p @res_list.keys
+			@res_list[name]
+		end
+
 		def nodes_send
 			return if !@res_list
-			puts "records number = #{@res_list.count}"
+			puts "records number = #{@res_list[@testcase_name].count}"
 			File.open(Time.now.to_i.to_s+'.yaml','w') do |f|
 				f.puts @res_list.to_yaml
 			end
